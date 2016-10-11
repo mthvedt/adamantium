@@ -50,7 +50,9 @@ pub struct ListItems<'a, T: 'a> {
     list: &'a List<T>
 }
 
-impl<'a, T: Send + Sync> Iterator<&'a T> for ListItems<'a, T> {
+impl<'a, T: Send + Sync> Iterator for ListItems<'a, T> {
+    type Item = &'a T;
+
     fn next(&mut self) -> Option<&'a T> {
         match *self.list {
             Cons(ref head, ref tail) => {

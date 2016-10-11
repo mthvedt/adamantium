@@ -1,5 +1,7 @@
-use std::sync::Arc;
+use std::cmp::Ordering::*;
 use std::default::Default;
+use std::ops::Deref;
+use std::sync::Arc;
 
 pub use self::Map::{Bin, Tip};
 
@@ -9,7 +11,7 @@ pub enum Map<K, V> {
     /// A branch node.
     Bin {
         /// The size of this branch.
-        size: uint,
+        size: u64,
 
         /// The key associated with this node.
         key: Arc<K>,
@@ -42,7 +44,7 @@ impl<K: Send + Sync, V: Send + Sync> Clone for Map<K, V> {
 impl<K, V> Map<K, V> {
     /// How many items are in the map.
     #[inline]
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> u64 {
         match *self {
             Bin { size, .. } => size,
             Tip => 0
@@ -180,7 +182,9 @@ impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
 
     /// Insert a key value pair into the map, if the key is already present,
     /// modify it's value with the passed in closure.
-    pub fn insert_or_modify_with(&self, key: Arc<K>, val: Arc<V>, modifier: |&V| -> V) -> Map<K, V> {
+    pub fn insert_or_modify_with<F>(&self, key: Arc<K>, val: Arc<V>, modifier: F) -> Map<K, V> 
+    where F: FnOnce(&V) -> V
+    {
         match *self {
             Tip => Map::singleton_arc(key, val),
             Bin { key: ref keyx, value: ref valuex,
@@ -197,8 +201,8 @@ impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
     }
 }
 
-static RATIO: uint = 2;
-static DELTA: uint = 3;
+static RATIO: u64 = 2;
+static DELTA: u64 = 3;
 
 // Balancing
 impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
@@ -338,7 +342,8 @@ impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
     /// Adjust the value at a specified key with the provided closure.
     ///
     /// If they key is not a member of the map, the original map is returned.
-    pub fn adjust(&self, key: &K, modifier: |&V| -> V) -> Map<K, V> {
+    pub fn adjust<F>(&self, key: &K, modifier: F) -> Map<K, V>
+    where F: FnOnce(&V) -> V {
         match *self {
             Tip => Tip,
             Bin { key: ref kx, value: ref vx, left: ref l, right: ref r, .. } => {
@@ -353,7 +358,8 @@ impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
 
     /// Conditionally update the key in the map with the provided closure. If the closure
     /// returns None, then the key value pair is deleted.
-    pub fn update(&self, key: &K, modifier: |&V| -> Option<V>) -> Map<K, V> {
+    pub fn update<F>(&self, key: &K, modifier: F) -> Map<K, V>
+    where F: FnOnce(&V) -> Option<V> {
         match *self {
             Tip => Tip,
             Bin { key: ref kx, value: ref vx, left: ref l, right: ref r, .. } => {
@@ -381,7 +387,8 @@ impl<K: Send + Sync + Ord, V: Send + Sync> Map<K, V> {
     /// value replaces the value currently at that key in the map or inserts
     /// the value into the map; if it returns None then that key value pair
     /// will be deleted or will remain not-inserted.
-    pub fn alter(&self, key: Arc<K>, modifier: |Option<&K>, Option<&V>| -> Option<V>) -> Map<K, V> {
+    pub fn alter<F>(&self, key: Arc<K>, modifier: F) -> Map<K, V>
+    where F: FnOnce(Option<&K>, Option<&V>) -> Option<V> {
         match *self {
             Tip => {
                 match modifier(None, None) {
